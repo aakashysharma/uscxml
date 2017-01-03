@@ -25,6 +25,7 @@
 #include <list>
 #include <map>
 #include <string>
+#include <limits>
 
 #include "uscxml/Common.h"
 #include "uscxml/util/URL.h"
@@ -35,7 +36,6 @@
 #include "uscxml/interpreter/EventQueue.h"
 #include "uscxml/interpreter/EventQueueImpl.h"
 #include "uscxml/util/DOM.h"
-#include <xercesc/dom/DOM.hpp>
 
 namespace uscxml {
 
@@ -108,7 +108,7 @@ public:
 	 MicrostepCallbacks
 	 */
 	virtual Event dequeueInternal() {
-		_currEvent = _internalQueue.dequeue(false);
+		_currEvent = _internalQueue.dequeue(0);
 		if (_currEvent)
 			_dataModel.setEvent(_currEvent);
 		return _currEvent;
@@ -226,6 +226,8 @@ public:
 	/** --- */
 
 	void setActionLanguage(const ActionLanguage& al) {
+		if (al.logger) // we intialized _logger as the default logger already
+			_logger = al.logger;
 		_execContent = al.execContent;
 		_microStepper = al.microStepper;
 		_dataModel = al.dataModel;
@@ -236,6 +238,10 @@ public:
 
 	void setFactory(Factory* factory) {
 		_factory = factory;
+	}
+
+	virtual Logger getLogger() {
+		return _logger;
 	}
 
 	static std::map<std::string, std::weak_ptr<InterpreterImpl> > getInstances();
@@ -282,6 +288,7 @@ protected:
 	MicroStep _microStepper;
 	DataModel _dataModel;
 	ContentExecutor _execContent;
+	Logger _logger = Logger::getDefault();
 
 	InterpreterState _state;
 

@@ -20,7 +20,6 @@
 #ifndef INTERPRETERMONITOR_H_D3F21429
 #define INTERPRETERMONITOR_H_D3F21429
 
-#include "uscxml/config.h"
 #include "uscxml/Common.h"
 #include "uscxml/messages/Event.h"
 #include "uscxml/debug/InterpreterIssue.h"
@@ -28,9 +27,9 @@
 #include <mutex>
 
 #define USCXML_MONITOR_CATCH(callback) \
-catch (Event e) { LOG(ERROR) << "Syntax error when calling " #callback " on monitors: " << std::endl << e << std::endl; } \
-catch (std::bad_weak_ptr e) { LOG(ERROR) << "Unclean shutdown " << std::endl; } \
-catch (...) { LOG(ERROR) << "An exception occurred when calling " #callback " on monitors"; } \
+catch (Event e) { LOG(USCXML_ERROR) << "Syntax error when calling " #callback " on monitors: " << std::endl << e << std::endl; } \
+catch (std::bad_weak_ptr e) { LOG(USCXML_ERROR) << "Unclean shutdown " << std::endl; } \
+catch (...) { LOG(USCXML_ERROR) << "An exception occurred when calling " #callback " on monitors"; } \
 if (_state == USCXML_DESTROYED) { throw std::bad_weak_ptr(); }
 
 #define USCXML_MONITOR_CALLBACK(callbacks, function) { \

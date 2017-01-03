@@ -5,7 +5,11 @@ find_program(SPIN_BIN spin)
 find_program(CC_BIN gcc)
 find_program(CXX_BIN g++)
 find_program(ANT_BIN ant)
+if (NOT ANT_BIN)
+	message(STATUS "No ant binary found, not generating Java tests / bindings")
+endif()
 find_program(PERL_BIN perl)
+find_program(PYTHON_BIN python)
 find_program(GHDL_BIN ghdl)
 
 set(GHDL_VERSION "0")
@@ -15,8 +19,7 @@ if (GHDL_BIN)
 	string(REGEX MATCH "^([0-9]+\\.[0-9]+)" GHDL_VERSION ${GHDL_VERSION_OUT})
 
 	if (${GHDL_VERSION} VERSION_LESS "0.32")
-		message(WARNING "GHDL version 0.32 required - ${GHDL_VERSION} found, not building VHDL tests")
-		message(WARNING "Try https://github.com/tgingold/ghdl/releases/tag/v0.33")
+		message(STATUS "GHDL version 0.32 required - ${GHDL_VERSION} found, not building VHDL tests")
 		unset(GHDL_BIN)
 	endif ()
 endif ()
@@ -39,6 +42,7 @@ function(USCXML_TEST_COMPILE)
 endfunction()
 
 # simple one file tests
+USCXML_TEST_COMPILE(NAME test-extensions LABEL general/test-extensions FILES src/test-extensions.cpp)
 USCXML_TEST_COMPILE(NAME test-url LABEL general/test-url FILES src/test-url.cpp)
 USCXML_TEST_COMPILE(NAME test-lifecycle LABEL general/test-lifecycle FILES src/test-lifecycle.cpp)
 USCXML_TEST_COMPILE(NAME test-validating LABEL general/test-validating FILES src/test-validating.cpp)
@@ -85,11 +89,11 @@ foreach (USCXML_ISSUE ${USCXML_ISSUES})
 	endif ()
 endforeach ()
 
-# make sure all headers are self-reliant
+# make sure the important headers are self-reliant
 set(USCXML_PUBLIC_HEADERS
 		"${PROJECT_SOURCE_DIR}/src/uscxml/uscxml.h"
 		"${PROJECT_SOURCE_DIR}/src/uscxml/Interpreter.h"
-		)
+	)
 
 file(GLOB_RECURSE USCXML_HEADERS
 		../src/*.h
@@ -159,12 +163,15 @@ if (NOT BUILD_MINIMAL)
 			# "gen/c/xpath"
 			"gen/c/lua"
 			# "gen/c/promela"
-			"gen/vhdl/ecma"
+			# "gen/vhdl/ecma"
+			"gen/vhdl/promela"
 			"gen/vhdl/null"
+
 			"gen/java/jexl"
 
 			# bindings
 			"binding/java/jexl"
+			"binding/python/ecma"
 
 			# state-machine interpreters
 			# "fsm/ecma"
@@ -296,9 +303,20 @@ if (NOT BUILD_MINIMAL)
 								${ANT_BIN}
 								-Dtest.file=${W3C_TEST}
 								-Duscxml.jar=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/uscxml.jar
-								WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bindings/java
-								)
+								WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/contrib/java/bindings)
 						set_tests_properties("${TEST_NAME}" PROPERTIES DEPENDS jar)
+						set(TEST_ADDED ON)
+					endif ()
+
+					if (PYTHON_BIN AND TEST_LANG STREQUAL "python")
+						add_test(NAME "${TEST_NAME}"
+								COMMAND
+								${PYTHON_BIN}
+								${PROJECT_SOURCE_DIR}/contrib/python/bindings/test-state-pass.py
+								${W3C_TEST}
+								WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/contrib/python/bindings)
+						
+						set_tests_properties("${TEST_NAME}" PROPERTIES ENVIRONMENT "USCXML_PYTHON_PATH=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 						set(TEST_ADDED ON)
 					endif ()
 

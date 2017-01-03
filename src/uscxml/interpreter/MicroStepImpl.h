@@ -20,12 +20,9 @@
 #ifndef MICROSTEPIMPL_H_98233709
 #define MICROSTEPIMPL_H_98233709
 
-#include "uscxml/config.h"
-
 #include <list>
 #include <set>
 #include <string>
-#include <xercesc/dom/DOM.hpp>
 
 #include "uscxml/Common.h"
 #include "uscxml/Interpreter.h"
@@ -62,6 +59,7 @@ public:
 	/** Monitoring */
 	virtual std::set<InterpreterMonitor*> getMonitors() = 0;
 	virtual Interpreter getInterpreter() = 0;
+	virtual Logger getLogger() = 0;
 };
 
 /**
@@ -76,6 +74,7 @@ public:
 	};
 
 	MicroStepImpl(MicroStepCallbacks* callbacks) : _callbacks(callbacks) {}
+	virtual std::shared_ptr<MicroStepImpl> create(MicroStepCallbacks* callbacks) = 0;
 
 	virtual InterpreterState step(size_t blockMs) = 0;
 	virtual void reset() = 0; ///< Reset state machine

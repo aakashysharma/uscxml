@@ -5,7 +5,7 @@
 #include "uscxml/config.h"
 
 #include <xercesc/parsers/XercesDOMParser.hpp>
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 #include <assert.h>
 #include <iostream>
 
@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
 	try {
 		testFileURLs();
 	} catch (Event e) {
-		LOG(ERROR) << e;
+		LOGD(USCXML_ERROR) << e;
 		exit(EXIT_FAILURE);
 	}
 

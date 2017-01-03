@@ -20,12 +20,15 @@
 #ifndef DATAMODELIMPL_H_5A33C087
 #define DATAMODELIMPL_H_5A33C087
 
-#include "uscxml/config.h"
 #include "uscxml/Common.h"
 #include "uscxml/plugins/Invoker.h"
 #include "uscxml/plugins/IOProcessor.h"
+#include "uscxml/interpreter/Logging.h"
 
-#include <xercesc/dom/DOM.hpp>
+namespace XERCESC_NS {
+class DOMDocument;
+class DOMNode;
+}
 
 #include <list>
 #include <string>
@@ -50,6 +53,7 @@ public:
 	virtual bool isInState(const std::string& stateId) = 0;
 	virtual XERCESC_NS::DOMDocument* getDocument() const = 0;
 	virtual const std::map<std::string, Invoker>& getInvokers() = 0;
+	virtual Logger getLogger() = 0;
 };
 
 class USCXML_API DataModelExtension {

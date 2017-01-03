@@ -29,11 +29,15 @@
 #include <xercesc/sax/HandlerBase.hpp>
 #include <xercesc/framework/MemBufInputSource.hpp>
 
-#include "easylogging++.h"
+#include "uscxml/interpreter/Logging.h"
 
 namespace uscxml {
 
 using namespace XERCESC_NS;
+
+std::shared_ptr<ContentExecutorImpl> BasicContentExecutor::create(ContentExecutorCallbacks* callbacks) {
+	return std::shared_ptr<ContentExecutorImpl>(new BasicContentExecutor(callbacks));
+}
 
 void BasicContentExecutor::processRaise(XERCESC_NS::DOMElement* content) {
 	Event raised(ATTR(content, "event"));
@@ -140,7 +144,7 @@ void BasicContentExecutor::processSend(XERCESC_NS::DOMElement* element) {
 			} else if (delayAttr.unit.length() == 0) { // unit less delay is interpreted as milliseconds
 				delayMs = strTo<uint32_t>(delayAttr.value);
 			} else {
-				LOG(ERROR) << "Cannot make sense of delay value " << delay << ": does not end in 's' or 'ms'";
+				LOG(_callbacks->getLogger(), USCXML_ERROR) << "Cannot make sense of delay value " << delay << ": does not end in 's' or 'ms'";
 			}
 		}
 	} catch (Event e) {
@@ -351,14 +355,14 @@ void BasicContentExecutor::process(XERCESC_NS::DOMElement* block, const X& xmlPr
 		} else if (iequals(tagName, xmlPrefix.str() + "script")) {
 			processScript(block);
 		} else {
-			LOG(ERROR) << tagName;
+			LOG(_callbacks->getLogger(), USCXML_ERROR) << tagName;
 			assert(false);
 		}
 	} catch (ErrorEvent exc) {
 
 		Event e(exc);
 		_callbacks->enqueueInternal(e);
-		LOG(ERROR) << exc << std::endl;
+		LOG(_callbacks->getLogger(), USCXML_ERROR) << exc << std::endl;
 		USCXML_MONITOR_CALLBACK1(_callbacks->getMonitors(), afterExecutingContent, block);
 
 		throw e; // will be catched in microstepper
@@ -631,18 +635,18 @@ Data BasicContentExecutor::elementAsData(XERCESC_NS::DOMElement* element) {
 				contentSS << X((*textIter)->getNodeValue());
 			}
 #if 0
-            try {
+			try {
 				Data d = _callbacks->getAsData(contentSS.str());
 				if (!d.empty())
 					return d;
 			} catch(...) {}
 #endif
-            // test294, test562
+			// test294, test562
 			return Data(spaceNormalize(contentSS.str()), Data::VERBATIM);
 		}
 	}
 
-//	LOG(WARNING) << "Element " << DOMUtils::xPathForNode(element) << " did not yield any data";
+//	LOG(USCXML_WARN) << "Element " << DOMUtils::xPathForNode(element) << " did not yield any data";
 	return Data();
 }
 

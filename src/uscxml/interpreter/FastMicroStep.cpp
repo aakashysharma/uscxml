@@ -26,7 +26,7 @@
 #include "uscxml/util/Convenience.h"
 #include "uscxml/interpreter/InterpreterMonitor.h"
 
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 
 #define BIT_ANY_SET(b) (!b.none())
 #define BIT_HAS(idx, bitset) (bitset[idx])
@@ -87,6 +87,10 @@ FastMicroStep::~FastMicroStep() {
 	for (size_t i = 0; i < _transitions.size(); i++) {
 		delete(_transitions[i]);
 	}
+}
+
+std::shared_ptr<MicroStepImpl> FastMicroStep::create(MicroStepCallbacks* callbacks) {
+	return std::shared_ptr<MicroStepImpl>(new FastMicroStep(callbacks));
 }
 
 void FastMicroStep::resortStates(DOMElement* element, const X& xmlPrefix) {
@@ -1094,14 +1098,14 @@ bool FastMicroStep::hasLegalConfiguration() {
 		DOMElement* state = *sIter;
 		if (isMember(state, config)) {
 			if (foundScxmlChild) {
-				LOG(ERROR) << "Invalid configuration: Multiple childs of scxml root are active '" << ATTR_CAST(foundScxmlChild, "id") << "' and '" << ATTR_CAST(scxmlChilds[i], "id") << "'";
+				LOG(USCXML_ERROR) << "Invalid configuration: Multiple childs of scxml root are active '" << ATTR_CAST(foundScxmlChild, "id") << "' and '" << ATTR_CAST(scxmlChilds[i], "id") << "'";
 				return false;
 			}
 			foundScxmlChild = scxmlChilds[i];
 		}
 	}
 	if (!foundScxmlChild) {
-		LOG(ERROR) << "Invalid configuration: No childs of scxml root are active";
+		LOG(USCXML_ERROR) << "Invalid configuration: No childs of scxml root are active";
 
 		return false;
 	}
@@ -1115,14 +1119,14 @@ bool FastMicroStep::hasLegalConfiguration() {
 		}
 	}
 	if (!foundAtomicState) {
-		LOG(ERROR) << "Invalid configuration: No atomic state is active";
+		LOG(USCXML_ERROR) << "Invalid configuration: No atomic state is active";
 		return false;
 	}
 
 	// the configuration contains no history pseudo-states
 	for (size_t i = 0; i < config.size(); i++) {
 		if (isHistory(Element<std::string>(config[i]))) {
-			LOG(ERROR) << "Invalid configuration: history state " << ATTR_CAST(config[i], "id") << " is active";
+			LOG(USCXML_ERROR) << "Invalid configuration: history state " << ATTR_CAST(config[i], "id") << " is active";
 			return false;
 		}
 	}
@@ -1138,7 +1142,7 @@ bool FastMicroStep::hasLegalConfiguration() {
 				        (iequals(LOCALNAME(parent), "state") ||
 				         iequals(LOCALNAME(parent), "parallel"))) {
 					if (!isMember(parent, config)) {
-						LOG(ERROR) << "Invalid configuration: atomic state '" << ATTR_CAST(config[i], "id") << "' is active, but parent '" << ATTR_CAST(parent, "id") << "' is not";
+						LOG(USCXML_ERROR) << "Invalid configuration: atomic state '" << ATTR_CAST(config[i], "id") << "' is active, but parent '" << ATTR_CAST(parent, "id") << "' is not";
 						return false;
 					}
 				}
@@ -1157,15 +1161,15 @@ bool FastMicroStep::hasLegalConfiguration() {
 				//std::cerr << childs[j] << std::endl;
 				if (isMember(childs[j], config)) {
 					if (foundChildState) {
-						LOG(ERROR) << "Invalid configuration: Multiple childs of compound '" << ATTR_CAST(config[i], "id")
-						           << "' are active '" << ATTR_CAST(foundChildState, "id") << "' and '" << ATTR_CAST(childs[j], "id") << "'";
+						LOG(USCXML_ERROR) << "Invalid configuration: Multiple childs of compound '" << ATTR_CAST(config[i], "id")
+						                  << "' are active '" << ATTR_CAST(foundChildState, "id") << "' and '" << ATTR_CAST(childs[j], "id") << "'";
 						return false;
 					}
 					foundChildState = childs[j];
 				}
 			}
 			if (!foundChildState) {
-				LOG(ERROR) << "Invalid configuration: No childs of compound '" << ATTR_CAST(config[i], "id") << "' are active";
+				LOG(USCXML_ERROR) << "Invalid configuration: No childs of compound '" << ATTR_CAST(config[i], "id") << "' are active";
 				return false;
 			}
 		}
@@ -1177,7 +1181,7 @@ bool FastMicroStep::hasLegalConfiguration() {
 			NodeSet<std::string> childs = getChildStates(config[i]);
 			for (size_t j = 0; j < childs.size(); j++) {
 				if (!isMember(childs[j], config) && !isHistory(Element<std::string>(childs[j]))) {
-					LOG(ERROR) << "Invalid configuration: Not all children of parallel '" << ATTR_CAST(config[i], "id") << "' are active i.e. '" << ATTR_CAST(childs[j], "id") << "' is not";
+					LOG(USCXML_ERROR) << "Invalid configuration: Not all children of parallel '" << ATTR_CAST(config[i], "id") << "' are active i.e. '" << ATTR_CAST(childs[j], "id") << "' is not";
 					return false;
 				}
 			}

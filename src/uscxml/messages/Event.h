@@ -90,7 +90,7 @@ public:
 	};
 
 	Event() : eventType(INTERNAL), hideSendId(false), uuid(UUID::getUUID()) {}
-	Event(const std::string& name, Type type = INTERNAL) : name(name), eventType(type), hideSendId(false) {}
+	explicit Event(const std::string& name, Type type = INTERNAL) : name(name), eventType(type), hideSendId(false) {}
 	bool operator< (const Event& other) const     {
 		return this < &other;
 	}
@@ -107,6 +107,12 @@ public:
 
 	operator bool() {
 		return name.size() > 0;
+	}
+
+	operator std::string() {
+		std::stringstream ss;
+		ss << *this;
+		return ss.str();
 	}
 
 	typedef std::multimap<std::string, Data> params_t;
@@ -192,7 +198,7 @@ class USCXML_API ErrorEvent : public Event {
 public:
 	ErrorEvent() : Event() {}
 	ErrorEvent(const std::string& msg) : Event("error.platform") {
-		data.compound["msg"] = msg;
+		data.compound["msg"] = Data(msg, Data::VERBATIM);
 	}
 };
 

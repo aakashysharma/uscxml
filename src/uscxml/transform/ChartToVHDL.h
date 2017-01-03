@@ -177,6 +177,8 @@ protected:
 
 	void writeEventController(std::ostream &stream);
 
+	void writeConditionSolver(std::ostream &stream);
+
 	void writeMicroStepper(std::ostream &stream);
 
 	void writeTestbench(std::ostream &stream);

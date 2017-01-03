@@ -29,7 +29,7 @@
 #include <xercesc/dom/DOM.hpp>
 #include <xercesc/framework/StdOutFormatTarget.hpp>
 
-#include "easylogging++.h"
+#include "uscxml/interpreter/Logging.h"
 
 //#include <glog/logging.h>
 //#include <boost/algorithm/string.hpp>
@@ -146,7 +146,7 @@ std::string DOMUtils::xPathForNode(const DOMNode* node, const std::string& ns) {
 		case DOMNode::DOCUMENT_NODE:
 			return xPath;
 		default:
-			LOG(ERROR) << "Only nodes of type element supported for now";
+			throw ErrorEvent("Only nodes of type element supported for now");
 			return "";
 			break;
 		}

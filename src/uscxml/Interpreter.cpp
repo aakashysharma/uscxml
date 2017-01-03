@@ -30,7 +30,7 @@
 #include <xercesc/sax/HandlerBase.hpp>
 #include <xercesc/util/XMLString.hpp>
 #include <xercesc/util/PlatformUtils.hpp>
-#include "easylogging++.h"
+#include "uscxml/interpreter/Logging.h"
 
 #include <iostream>
 #include <boost/algorithm/string.hpp>
@@ -39,9 +39,6 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
-
-#include "easylogging++.h"
-INITIALIZE_EASYLOGGINGPP
 
 #define VERBOSE 0
 
@@ -173,13 +170,13 @@ Interpreter Interpreter::fromURL(const std::string& url) {
 	}
 
 	catch (const XERCESC_NS::SAXParseException& toCatch) {
-		LOG(ERROR) << X(toCatch.getMessage());
+		LOGD(USCXML_ERROR) << X(toCatch.getMessage());
 	} catch (const XERCESC_NS::RuntimeException& toCatch) {
-		LOG(ERROR) << X(toCatch.getMessage());
+		LOGD(USCXML_ERROR) << X(toCatch.getMessage());
 	} catch (const XERCESC_NS::XMLException& toCatch) {
-		LOG(ERROR) << X(toCatch.getMessage());
+		LOGD(USCXML_ERROR) << X(toCatch.getMessage());
 	} catch (const XERCESC_NS::DOMException& toCatch) {
-		LOG(ERROR) << X(toCatch.getMessage());
+		LOGD(USCXML_ERROR) << X(toCatch.getMessage());
 	}
 
 	return interpreter;
@@ -228,6 +225,10 @@ void Interpreter::addMonitor(InterpreterMonitor* monitor) {
 
 void Interpreter::removeMonitor(InterpreterMonitor* monitor) {
 	return _impl->removeMonitor(monitor);
+}
+
+Logger Interpreter::getLogger() {
+	return _impl->getLogger();
 }
 
 std::list<InterpreterIssue> Interpreter::validate() {

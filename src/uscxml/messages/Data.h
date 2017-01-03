@@ -24,7 +24,6 @@
 #include <map>
 #include <memory>
 
-#include "uscxml/config.h"
 #include "uscxml/Common.h"
 #include "uscxml/util/Convenience.h"
 #include "uscxml/messages/Blob.h"
@@ -61,14 +60,15 @@ public:
 		}
 	}
 
+	explicit Data(XERCESC_NS::DOMNode* node_) : node(node_) {}
 	//    template <typename T> Data(T value, Type type = INTERPRETED) : atom(toStr(value)), type(type) {}
 
 	// we will have to drop this constructor as it interferes with operator Data() and requires C++11
 	template <typename T>
-	Data(T value, typename std::enable_if<! std::is_base_of<Data, T>::value>::type* = nullptr)
+	explicit Data(T value, typename std::enable_if<! std::is_base_of<Data, T>::value>::type* = nullptr)
 		: node(NULL), atom(toStr(value)), type(VERBATIM) {}
 	template <typename T>
-	Data(T value, Type type, typename std::enable_if<! std::is_base_of<Data, T>::value>::type* = nullptr)
+	explicit Data(T value, Type type, typename std::enable_if<! std::is_base_of<Data, T>::value>::type* = nullptr)
 		: node(NULL), atom(toStr(value)), type(type) {}
 
 	~Data() {}

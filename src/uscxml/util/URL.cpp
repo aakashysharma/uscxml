@@ -23,25 +23,33 @@
 #include <string>
 #include <cassert>
 
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 #include "uscxml/config.h"
+
+#include <curl/curl.h>
+#include <uriparser/Uri.h>
 
 
 #ifdef _WIN32
+#include <direct.h>
+
 #define getcwd _getcwd
 #else
 #include <unistd.h> // getcwd
 //#include <pwd.h>
 #endif
 
+#define DOWNLOAD_IF_NECESSARY if (!_isDownloaded) { download(true); }
+#define USCXML_URI_STRING(obj, field) std::string(obj.field.first, (obj.field.afterLast - obj.field.first))
+
 namespace uscxml {
 
-void URLImpl::prepareException(ErrorEvent& exception, int errorCode, const std::string& origUri, UriParserStateA* parser) {
+void URLImpl::prepareException(ErrorEvent& exception, int errorCode, const std::string& origUri, void* parser) {
 	exception.data.compound["uri"].atom = origUri;
 
-	if (parser != NULL && parser->errorPos != NULL) {
+	if (parser != NULL && ((UriParserStateA*)parser)->errorPos != NULL) {
 		const char* startPtr = origUri.c_str();
-		while(startPtr != parser->errorPos && *startPtr != '\0') {
+		while(startPtr != ((UriParserStateA*)parser)->errorPos && *startPtr != '\0') {
 			exception.data.compound["urk"].atom += " ";
 			startPtr++;
 		}
@@ -80,16 +88,18 @@ void URLImpl::prepareException(ErrorEvent& exception, int errorCode, const std::
 }
 
 URLImpl::URLImpl() : _handle(NULL), _requestType(GET), _isDownloaded(false), _hasFailed(false) {
+	_uri = malloc(sizeof(UriUriA));
 }
 
 URLImpl::URLImpl(const std::string& url) : _orig(url), _handle(NULL), _requestType(GET), _isDownloaded(false), _hasFailed(false) {
 	UriParserStateA state;
-	state.uri = &_uri;
+	_uri = malloc(sizeof(UriUriA));
+	state.uri = (UriUriA*)_uri;
 
 	int err = uriParseUriA(&state, _orig.c_str());
 	if (err != URI_SUCCESS) {
 		UriParserStateA state2;
-		state2.uri = &_uri;
+		state2.uri = (UriUriA*)_uri;
 
 		char* tmp = (char*)malloc(8 + 3 * _orig.size() + 1);
 		uriWindowsFilenameToUriStringA(_orig.c_str(), tmp);
@@ -100,7 +110,7 @@ URLImpl::URLImpl(const std::string& url) : _orig(url), _handle(NULL), _requestTy
 
 	if (err != URI_SUCCESS) {
 		UriParserStateA state2;
-		state2.uri = &_uri;
+		state2.uri = (UriUriA*)_uri;
 
 		char* tmp = (char*)malloc(7 + 3 * _orig.size() + 1 );
 		uriUnixFilenameToUriStringA(_orig.c_str(), tmp);
@@ -117,14 +127,17 @@ URLImpl::URLImpl(const std::string& url) : _orig(url), _handle(NULL), _requestTy
 }
 
 URLImpl::~URLImpl() {
-	uriFreeUriMembersA(&_uri);
+	uriFreeUriMembersA((UriUriA*)_uri);
 	if (_handle != NULL)
 		curl_easy_cleanup(_handle);
+	free(_uri);
 }
 
 URL URLImpl::resolve(URLImpl* relative, URLImpl* absolute) {
 	std::shared_ptr<URLImpl> dest(new URLImpl());
-	int err = uriAddBaseUriExA(&(dest->_uri), &(relative->_uri), &(absolute->_uri), URI_RESOLVE_IDENTICAL_SCHEME_COMPAT);
+	int err = uriAddBaseUriExA(((UriUriA*)dest->_uri),
+	                           ((UriUriA*)relative->_uri),
+	                           ((UriUriA*)absolute->_uri), URI_RESOLVE_IDENTICAL_SCHEME_COMPAT);
 	if (err != URI_SUCCESS) {
 		ErrorEvent exc("Cannot resolve " + (std::string)(*relative) + " with " + (std::string)(*absolute));
 		prepareException(exc, err, "", NULL);
@@ -154,7 +167,9 @@ URL URLImpl::resolveWithCWD(URLImpl* relative) {
 
 URL URLImpl::refer(URLImpl* absoluteSource, URLImpl* absoluteBase) {
 	std::shared_ptr<URLImpl> dest(new URLImpl());
-	int err = uriRemoveBaseUriA(&(dest->_uri), &(absoluteSource->_uri), &(absoluteBase->_uri), URI_FALSE);
+	int err = uriRemoveBaseUriA(((UriUriA*)dest->_uri),
+	                            ((UriUriA*)absoluteSource->_uri),
+	                            ((UriUriA*)absoluteBase->_uri), URI_FALSE);
 	if (err != URI_SUCCESS) {
 		ErrorEvent exc("Cannot make a relative reference for " + (std::string)(*absoluteSource) + " with " + (std::string)(*absoluteBase));
 		prepareException(exc, err, "", NULL);
@@ -166,7 +181,7 @@ URL URLImpl::refer(URLImpl* absoluteSource, URLImpl* absoluteBase) {
 }
 
 void URLImpl::normalize() {
-	int err = uriNormalizeSyntaxA(&_uri);
+	int err = uriNormalizeSyntaxA((UriUriA*)_uri);
 	if (err != URI_SUCCESS) {
 		ErrorEvent exc("Cannot normalize URL " + (std::string)*this);
 		prepareException(exc, err, _orig, NULL);
@@ -174,8 +189,33 @@ void URLImpl::normalize() {
 	}
 }
 
+bool URLImpl::isAbsolute() const {
+	// see https://sourceforge.net/p/uriparser/bugs/3/
+	return ((UriUriA*)_uri)->absolutePath || ((((UriUriA*)_uri)->hostText.first != nullptr) && (((UriUriA*)_uri)->pathHead != nullptr));
+}
+
+std::string URLImpl::scheme() const {
+	return USCXML_URI_STRING((*(UriUriA*)_uri), scheme);
+}
+
+std::string URLImpl::userInfo() const {
+	return USCXML_URI_STRING((*(UriUriA*)_uri), userInfo);
+}
+
+std::string URLImpl::host() const {
+	return USCXML_URI_STRING((*(UriUriA*)_uri), hostText);
+}
+
+std::string URLImpl::port() const {
+	return USCXML_URI_STRING((*(UriUriA*)_uri), portText);
+}
+
+std::string URLImpl::fragment() const {
+	return USCXML_URI_STRING((*(UriUriA*)_uri), fragment);
+}
+
 std::string URLImpl::path() const {
-	UriPathSegmentA* firstSeg = _uri.pathHead;
+	UriPathSegmentA* firstSeg = ((UriUriA*)_uri)->pathHead;
 	UriPathSegmentA* lastSeg = firstSeg;
 	while(lastSeg->next) {
 		lastSeg = lastSeg->next;
@@ -184,12 +224,12 @@ std::string URLImpl::path() const {
 	std::string path;
 
 	// what a mess!
-	if (_uri.absolutePath ||
-	        (_uri.pathHead != NULL &&
-	         (_uri.hostText.first != NULL ||
-	          _uri.hostData.ip4 != NULL ||
-	          _uri.hostData.ip6 != NULL ||
-	          _uri.hostData.ipFuture.first != NULL))) {
+	if (((UriUriA*)_uri)->absolutePath ||
+	        (((UriUriA*)_uri)->pathHead != NULL &&
+	         (((UriUriA*)_uri)->hostText.first != NULL ||
+	          ((UriUriA*)_uri)->hostData.ip4 != NULL ||
+	          ((UriUriA*)_uri)->hostData.ip6 != NULL ||
+	          ((UriUriA*)_uri)->hostData.ipFuture.first != NULL))) {
 		path += "/";
 	}
 	path += std::string(firstSeg->text.first, lastSeg->text.afterLast - firstSeg->text.first);
@@ -199,7 +239,7 @@ std::string URLImpl::path() const {
 std::list<std::string> URLImpl::pathComponents() const {
 	std::list<std::string> pathList;
 
-	UriPathSegmentA* currSeg = _uri.pathHead;
+	UriPathSegmentA* currSeg = ((UriUriA*)_uri)->pathHead;
 	while(currSeg != NULL) {
 		pathList.push_back(USCXML_URI_STRING((*currSeg), text));
 		currSeg = currSeg->next;
@@ -214,7 +254,7 @@ std::map<std::string, std::string> URLImpl::query() const {
 	std::map<std::string, std::string> queryMap;
 	int itemCount;
 
-	int err = uriDissectQueryMallocA(&queryList, &itemCount, _uri.query.first, _uri.query.afterLast);
+	int err = uriDissectQueryMallocA(&queryList, &itemCount, (*(UriUriA*)_uri).query.first, (*(UriUriA*)_uri).query.afterLast);
 	if (err != URI_SUCCESS) {
 		ErrorEvent exc("Cannot get query from URL " + (std::string)*this);
 		prepareException(exc, err, _orig, NULL);
@@ -236,7 +276,7 @@ CURL* URLImpl::getCurlHandle() {
 	if (_handle == NULL) {
 		_handle = curl_easy_init();
 		if (_handle == NULL)
-			LOG(ERROR) << "curl_easy_init returned NULL, this is bad!";
+			throw ErrorEvent("curl_easy_init returned NULL, this is bad!");
 	}
 	return _handle;
 }
@@ -268,7 +308,7 @@ size_t URLImpl::headerHandler(void *ptr, size_t size, size_t nmemb, void *userda
 }
 
 void URLImpl::downloadStarted() {
-	//	LOG(INFO) << "Starting download of " << asString() << std::endl;
+	//	LOG(USCXML_INFO) << "Starting download of " << asString() << std::endl;
 	_rawInContent.str("");
 	_rawInContent.clear();
 	_rawInHeader.str("");
@@ -325,10 +365,10 @@ void URLImpl::downloadCompleted() {
 	}
 }
 
-void URLImpl::downloadFailed(CURLcode errorCode) {
+void URLImpl::downloadFailed(int errorCode) {
 	std::lock_guard<std::recursive_mutex> lock(_mutex);
 
-	_error = curl_easy_strerror(errorCode);
+	_error = curl_easy_strerror((CURLcode)errorCode);
 	_hasFailed = true;
 	_isDownloaded = false;
 	_condVar.notify_all();
@@ -339,6 +379,48 @@ void URLImpl::downloadFailed(CURLcode errorCode) {
 		monIter++;
 	}
 
+}
+
+void URLImpl::addOutHeader(const std::string& key, const std::string& value) {
+	_outHeader[key] = value;
+}
+void URLImpl::setOutContent(const std::string& content) {
+	_outContent = content;
+	_requestType = URLRequestType::POST;
+}
+void URLImpl::setRequestType(URLRequestType requestType) {
+	_requestType = requestType;
+
+}
+
+const std::map<std::string, std::string> URLImpl::getInHeaderFields() {
+	DOWNLOAD_IF_NECESSARY
+	return _inHeaders;
+}
+
+const std::string URLImpl::getInHeaderField(const std::string& key) {
+	DOWNLOAD_IF_NECESSARY
+	if (_inHeaders.find(key) != _inHeaders.end()) {
+		return _inHeaders[key];
+	}
+	return "";
+}
+
+const std::string URLImpl::getStatusCode() const {
+	//        DOWNLOAD_IF_NECESSARY
+	return _statusCode;
+}
+
+const std::string URLImpl::getStatusMessage() const {
+	//        DOWNLOAD_IF_NECESSARY
+	return _statusMsg;
+}
+
+const std::string URLImpl::getInContent(bool forceReload) {
+	if (forceReload)
+		_isDownloaded = false;
+	DOWNLOAD_IF_NECESSARY
+	return _rawInContent.str();
 }
 
 const void URLImpl::download(bool blocking) {
@@ -397,7 +479,7 @@ URLImpl::operator Data() const {
 
 URLImpl::operator std::string() const {
 	int charsRequired = 0;
-	if (uriToStringCharsRequiredA(&_uri, &charsRequired) != URI_SUCCESS) {
+	if (uriToStringCharsRequiredA((UriUriA*)_uri, &charsRequired) != URI_SUCCESS) {
 		throw ErrorEvent("Cannot recompose URL");
 	}
 	charsRequired++;
@@ -408,7 +490,7 @@ URLImpl::operator std::string() const {
 		throw ErrorEvent("Malloc failed");
 	}
 
-	if (uriToStringA(uriString, &_uri, charsRequired, NULL) != URI_SUCCESS) {
+	if (uriToStringA(uriString, (UriUriA*)_uri, charsRequired, NULL) != URI_SUCCESS) {
 		free(uriString);
 		throw ErrorEvent("Cannot recompose URL");
 	}
@@ -458,54 +540,54 @@ URLFetcher::URLFetcher() {
 	/* Name of proxy to use. */
 	if (envProxy)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXY, envProxy)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy: " << curl_easy_strerror(curlError);
 
 	/* set transfer mode (;type=<a|i>) when doing FTP via an HTTP proxy */
 	if (envProxyTransferMode)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXY_TRANSFER_MODE, envProxyTransferMode)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy transfer mode: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy transfer mode: " << curl_easy_strerror(curlError);
 
 	/* Set this to a bitmask value to enable the particular authentications
 	 methods you like. Use this in combination with CURLOPT_PROXYUSERPWD.
 	 Note that setting multiple bits may cause extra network round-trips. */
 	if (envProxyAuth)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXYAUTH, envProxyAuth)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy authentication: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy authentication: " << curl_easy_strerror(curlError);
 
 #if 0
 	/* This points to a linked list of headers used for proxy requests only,
 	 struct curl_slist kind */
 	if (envProxyHeader && unsupported)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXYHEADER, envProxyHeader)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy header: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy header: " << curl_easy_strerror(curlError);
 #endif
 
 	/* "name" and "pwd" to use with Proxy when fetching. */
 	if (envProxyUsername)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXYUSERNAME, envProxyUsername)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy username: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy username: " << curl_easy_strerror(curlError);
 	if (envProxyPassword)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXYPASSWORD, envProxyPassword)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy password: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy password: " << curl_easy_strerror(curlError);
 
 	/* Port of the proxy, can be set in the proxy string as well with:
 	 "[host]:[port]" */
 	if (envProxyPort)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXYPORT, envProxyPort)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy port: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy port: " << curl_easy_strerror(curlError);
 
 #if 0
 	/* indicates type of proxy. accepted values are CURLPROXY_HTTP (default),
 	 CURLPROXY_SOCKS4, CURLPROXY_SOCKS4A and CURLPROXY_SOCKS5. */
 	if (envProxyType && unsupported)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXYTYPE, envProxyType)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy type: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy type: " << curl_easy_strerror(curlError);
 #endif
 
 	/* "user:password" to use with proxy. */
 	if (envProxyUserPwd)
 		(curlError = curl_easy_setopt(_multiHandle, CURLOPT_PROXYUSERPWD, envProxyUserPwd)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set curl proxy user password: " << curl_easy_strerror(curlError);
+		LOG(USCXML_ERROR) << "Cannot set curl proxy user password: " << curl_easy_strerror(curlError);
 #endif
 
 	start();
@@ -531,55 +613,55 @@ void URLFetcher::fetchURL(URL& url) {
 		std::string fromURL(url);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_URL, fromURL.c_str())) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set url to " << std::string(url) << ": " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot set url to " << std::string(url) << ": " << curl_easy_strerror(curlError);
 
 		//		(curlError = curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1)) == CURLE_OK ||
-		//		LOG(ERROR) << "Cannot set curl to ignore signals: " << curl_easy_strerror(curlError);
+		//		LOG(USCXML_ERROR) << "Cannot set curl to ignore signals: " << curl_easy_strerror(curlError);
 
 		//		(curlError = curl_easy_setopt(handle, CURLOPT_FORBID_REUSE, 1)) == CURLE_OK ||
-		//		LOG(ERROR) << "Cannot force noreuse: " << curl_easy_strerror(curlError);
+		//		LOG(USCXML_ERROR) << "Cannot force noreuse: " << curl_easy_strerror(curlError);
 
 		//		(curlError = curl_easy_setopt(handle, CURLOPT_VERBOSE, 1)) == CURLE_OK ||
-		//		LOG(ERROR) << "Cannot set verbose: " << curl_easy_strerror(curlError);
+		//		LOG(USCXML_ERROR) << "Cannot set verbose: " << curl_easy_strerror(curlError);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_WRITEDATA, url._impl.get())) == CURLE_OK ||
-		LOG(ERROR) << "Cannot register this as write userdata: " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot register this as write userdata: " << curl_easy_strerror(curlError);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, URLImpl::writeHandler)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set write callback: " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot set write callback: " << curl_easy_strerror(curlError);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, URLImpl::headerHandler)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot request header from curl: " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot request header from curl: " << curl_easy_strerror(curlError);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_HEADERDATA, url._impl.get())) == CURLE_OK ||
-		LOG(ERROR) << "Cannot register this as header userdata: " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot register this as header userdata: " << curl_easy_strerror(curlError);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, false)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot forfeit peer verification: " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot forfeit peer verification: " << curl_easy_strerror(curlError);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_USERAGENT, "uscxml/" USCXML_VERSION)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot set our user agent string: " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot set our user agent string: " << curl_easy_strerror(curlError);
 
 		(curlError = curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, true)) == CURLE_OK ||
-		LOG(ERROR) << "Cannot enable follow redirects: " << curl_easy_strerror(curlError);
+		LOGD(USCXML_ERROR) << "Cannot enable follow redirects: " << curl_easy_strerror(curlError);
 
 		if (instance->_envProxy)
 			(curlError = curl_easy_setopt(handle, CURLOPT_PROXY, instance->_envProxy)) == CURLE_OK ||
-			LOG(ERROR) << "Cannot set curl proxy: " << curl_easy_strerror(curlError);
+			LOGD(USCXML_ERROR) << "Cannot set curl proxy: " << curl_easy_strerror(curlError);
 
 		if (url._impl->_requestType == URLRequestType::POST) {
 
 			(curlError = curl_easy_setopt(handle, CURLOPT_POST, 1)) == CURLE_OK ||
-			LOG(ERROR) << "Cannot set request type to post for " << std::string(url) << ": " << curl_easy_strerror(curlError);
+			LOGD(USCXML_ERROR) << "Cannot set request type to post for " << std::string(url) << ": " << curl_easy_strerror(curlError);
 
 			(curlError = curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, url._impl->_outContent.c_str())) == CURLE_OK ||
-			LOG(ERROR) << "Cannot set post data " << std::string(url) << ": " << curl_easy_strerror(curlError);
+			LOGD(USCXML_ERROR) << "Cannot set post data " << std::string(url) << ": " << curl_easy_strerror(curlError);
 
 			// Disable "Expect: 100-continue"
 			//			curl_slist* disallowed_headers = 0;
 			//			disallowed_headers = curl_slist_append(disallowed_headers, "Expect:");
 			//			(curlError = curl_easy_setopt(handle, CURLOPT_HTTPHEADER, disallowed_headers)) == CURLE_OK ||
-			//			LOG(ERROR) << "Cannot disable Expect 100 header: " << curl_easy_strerror(curlError);
+			//			LOG(USCXML_ERROR) << "Cannot disable Expect 100 header: " << curl_easy_strerror(curlError);
 
 			struct curl_slist* headers = NULL;
 			std::map<std::string, std::string>::iterator paramIter = url._impl->_outHeader.begin();
@@ -603,14 +685,14 @@ void URLFetcher::fetchURL(URL& url) {
 			instance->_handlesToHeaders[handle] = headers;
 
 			(curlError = curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers)) == CURLE_OK ||
-			LOG(ERROR) << "Cannot headers for " << std::string(url) << ": " << curl_easy_strerror(curlError);
+			LOGD(USCXML_ERROR) << "Cannot headers for " << std::string(url) << ": " << curl_easy_strerror(curlError);
 
 //			curl_slist_free_all(headers);
 
 
 		} else if (url._impl->_requestType == URLRequestType::GET) {
 			(curlError = curl_easy_setopt(handle, CURLOPT_HTTPGET, 1)) == CURLE_OK ||
-			LOG(ERROR) << "Cannot set request type to get for " << std::string(url) << ": " << curl_easy_strerror(curlError);
+			LOGD(USCXML_ERROR) << "Cannot set request type to get for " << std::string(url) << ": " << curl_easy_strerror(curlError);
 		}
 
 		url._impl->downloadStarted();
@@ -633,7 +715,7 @@ void URLFetcher::breakURL(URL& url) {
 		instance->_handlesToURLs.erase(handle);
 	}
 	if (instance->_handlesToHeaders.find(handle) != instance->_handlesToHeaders.end()) {
-		curl_slist_free_all(instance->_handlesToHeaders[handle]);
+		curl_slist_free_all((struct curl_slist *)instance->_handlesToHeaders[handle]);
 		instance->_handlesToHeaders.erase(handle);
 	}
 }
@@ -660,7 +742,7 @@ void URLFetcher::run(void* instance) {
 	while(fetcher->_isStarted) {
 		fetcher->perform();
 	}
-	LOG(ERROR) << "URLFetcher thread stopped!";
+	LOGD(USCXML_ERROR) << "URLFetcher thread stopped!";
 }
 
 void URLFetcher::perform() {
@@ -677,7 +759,7 @@ void URLFetcher::perform() {
 		}
 		err = curl_multi_perform(_multiHandle, &stillRunning);
 		if (err != CURLM_OK) {
-			LOG(WARNING) << "curl_multi_perform: " << curl_multi_strerror(err);
+			LOGD(USCXML_WARN) << "curl_multi_perform: " << curl_multi_strerror(err);
 		}
 	}
 
@@ -701,7 +783,7 @@ void URLFetcher::perform() {
 			std::lock_guard<std::recursive_mutex> lock(_mutex);
 			err = curl_multi_timeout(_multiHandle, &curlTimeOut);
 			if (err != CURLM_OK) {
-				LOG(WARNING) << "curl_multi_timeout: " << curl_multi_strerror(err);
+				LOGD(USCXML_WARN) << "curl_multi_timeout: " << curl_multi_strerror(err);
 			}
 		}
 
@@ -719,7 +801,7 @@ void URLFetcher::perform() {
 			std::lock_guard<std::recursive_mutex> lock(_mutex);
 			err = curl_multi_fdset(_multiHandle, &fdread, &fdwrite, &fdexcep, &maxfd);
 			if (err != CURLM_OK) {
-				LOG(WARNING) << "curl_multi_fdset: " << curl_multi_strerror(err);
+				LOGD(USCXML_WARN) << "curl_multi_fdset: " << curl_multi_strerror(err);
 			}
 		}
 
@@ -734,7 +816,7 @@ void URLFetcher::perform() {
 			std::lock_guard<std::recursive_mutex> lock(_mutex);
 			err = curl_multi_perform(_multiHandle, &stillRunning);
 			if (err != CURLM_OK) {
-				LOG(WARNING) << "curl_multi_perform: " << curl_multi_strerror(err);
+				LOGD(USCXML_WARN) << "curl_multi_perform: " << curl_multi_strerror(err);
 			}
 			break;
 		}
@@ -749,7 +831,7 @@ void URLFetcher::perform() {
 						_handlesToURLs[msg->easy_handle]._impl->downloadCompleted();
 						err = curl_multi_remove_handle(_multiHandle, msg->easy_handle);
 						if (err != CURLM_OK) {
-							LOG(WARNING) << "curl_multi_remove_handle: " << curl_multi_strerror(err);
+							LOGD(USCXML_WARN) << "curl_multi_remove_handle: " << curl_multi_strerror(err);
 						}
 
 						break;
@@ -757,17 +839,17 @@ void URLFetcher::perform() {
 						_handlesToURLs[msg->easy_handle]._impl->downloadFailed(msg->data.result);
 						err = curl_multi_remove_handle(_multiHandle, msg->easy_handle);
 						if (err != CURLM_OK) {
-							LOG(WARNING) << "curl_multi_remove_handle: " << curl_multi_strerror(err);
+							LOGD(USCXML_WARN) << "curl_multi_remove_handle: " << curl_multi_strerror(err);
 						}
 						break;
 
 					}
 					_handlesToURLs.erase(msg->easy_handle);
-					curl_slist_free_all(_handlesToHeaders[msg->easy_handle]);
+					curl_slist_free_all((struct curl_slist *)_handlesToHeaders[msg->easy_handle]);
 					_handlesToHeaders.erase(msg->easy_handle);
 
 				} else {
-					LOG(ERROR) << "Curl reports info on unfinished download?!";
+					LOGD(USCXML_ERROR) << "Curl reports info on unfinished download?!";
 				}
 			}
 		}

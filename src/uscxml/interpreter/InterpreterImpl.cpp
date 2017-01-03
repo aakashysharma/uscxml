@@ -23,12 +23,13 @@
 #include "uscxml/Interpreter.h"
 #include "uscxml/interpreter/InterpreterImpl.h" // beware cyclic reference!
 #include "uscxml/interpreter/BasicEventQueue.h"
+#include "uscxml/interpreter/BasicDelayedEventQueue.h"
 #include "uscxml/messages/Event.h"
 #include "uscxml/util/String.h"
 #include "uscxml/util/Predicates.h"
 #include "uscxml/plugins/InvokerImpl.h"
 
-#include "easylogging++.h"
+#include "uscxml/interpreter/Logging.h"
 
 #include <iostream>
 
@@ -248,7 +249,7 @@ bool InterpreterImpl::isTrue(const std::string& expr) {
 	} catch (ErrorEvent e) {
 		// test 244: deliver error execution
 
-		LOG(ERROR) << e;
+		LOG(getLogger(), USCXML_ERROR) << e;
 
 		// test 344
 		enqueueInternal(e);
@@ -280,7 +281,7 @@ Event InterpreterImpl::dequeueExternal(size_t blockMs) {
 	if (_currEvent) {
 		_dataModel.setEvent(_currEvent);
 
-//		LOG(ERROR) << e.name;
+//		LOG(USCXML_ERROR) << e.name;
 
 		// test 233
 		if (_currEvent.invokeid.size() > 0 &&

@@ -21,7 +21,6 @@
 #define DEBUGGERSERVLET_H_ATUMDA3G
 
 #include "uscxml/Common.h"
-#include <easylogging++.h>
 #include "uscxml/util/BlockingQueue.h"
 #include "uscxml/server/HTTPServer.h"
 
@@ -29,27 +28,8 @@
 
 namespace uscxml {
 
-class USCXML_API DebuggerServlet : public Debugger, public HTTPServlet, public el::LogDispatchCallback {
+class USCXML_API DebuggerServlet : public Debugger, public HTTPServlet {
 public:
-	class LogMessage : public Data {
-	public:
-#if 0
-		LogMessage(google::LogSeverity severity, const char* full_filename,
-		           const char* base_filename, int line,
-		           const struct ::tm* tm_time,
-		           std::string message, std::string formatted) {
-
-			compound["severity"] = severity;
-			compound["fullFilename"] = Data(full_filename, Data::VERBATIM);
-			compound["baseFilename"] = Data(base_filename, Data::VERBATIM);
-			compound["line"] = line;
-			compound["message"] = Data(message, Data::VERBATIM);
-			compound["time"] = Data(mktime((struct ::tm*)tm_time), Data::INTERPRETED);
-			compound["formatted"] = Data(formatted, Data::VERBATIM);
-		}
-#endif
-	};
-
 	virtual ~DebuggerServlet() {}
 
 	// from Debugger
@@ -85,14 +65,6 @@ public:
 //	void processRemoveBreakPoint(const HTTPServer::Request& request);
 //	void processPoll(const HTTPServer::Request& request);
 
-	// Logsink
-	/**
-	virtual void send(google::LogSeverity severity, const char* full_filename,
-	                  const char* base_filename, int line,
-	                  const struct ::tm* tm_time,
-	                  const char* message, size_t message_len);
-	*/
-	void handle(const el::LogDispatchData* data);
 
 protected:
 	void serverPushData(std::shared_ptr<DebugSession>);

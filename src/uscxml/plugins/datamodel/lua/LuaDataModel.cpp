@@ -31,7 +31,7 @@
 
 #include "uscxml/messages/Event.h"
 #include "uscxml/util/DOM.h"
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 #include <boost/algorithm/string.hpp>
 
 //#include "LuaDOM.cpp.inc"
@@ -204,7 +204,7 @@ std::shared_ptr<DataModelImpl> LuaDataModel::create(DataModelCallbacks* callback
 			luabridge::setGlobal(dm->_luaState, resultLxpLOM, "lxp.lom");
 		}
 	} catch (luabridge::LuaException e) {
-		LOG(INFO) << e.what();
+		LOG(_callbacks->getLogger(), USCXML_INFO) << e.what();
 	}
 
 	luabridge::getGlobalNamespace(dm->_luaState).beginClass<LuaDataModel>("DataModel").endClass();
@@ -326,7 +326,7 @@ void LuaDataModel::setEvent(const Event& event) {
 
 Data LuaDataModel::evalAsData(const std::string& content) {
 	Data data;
-    ErrorEvent originalError;
+	ErrorEvent originalError;
 
 	std::string trimmedExpr = boost::trim_copy(content);
 
@@ -338,31 +338,31 @@ Data LuaDataModel::evalAsData(const std::string& content) {
 		lua_pop(_luaState, retVals);
 		return data;
 	} catch (ErrorEvent e) {
-        originalError = e;
+		originalError = e;
 	}
 
-    int retVals = 0;
+	int retVals = 0;
 	try {
 		// evaluate again without the return()
 		retVals = luaEval(_luaState, trimmedExpr);
-    } catch (ErrorEvent e) {
-        throw originalError; // we will assume syntax error and throw
-    }
+	} catch (ErrorEvent e) {
+		throw originalError; // we will assume syntax error and throw
+	}
 
-    if (retVals == 0)
-        throw originalError; // we will assume syntax error and throw
+	if (retVals == 0)
+		throw originalError; // we will assume syntax error and throw
 
-    
-    try {
+
+	try {
 		if (retVals == 1) {
 			data = getLuaAsData(_luaState, luabridge::LuaRef::fromStack(_luaState, -1));
 		}
 		lua_pop(_luaState, retVals);
 		return data;
-        
-    } catch (ErrorEvent e) {
-        throw e; // we will assume syntax error and throw
-    }
+
+	} catch (ErrorEvent e) {
+		throw e; // we will assume syntax error and throw
+	}
 
 
 	return data;

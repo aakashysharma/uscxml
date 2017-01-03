@@ -16,7 +16,7 @@
 #include "uscxml/server/HTTPServer.h"
 #include "getopt.h"
 
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 
 #define ANNOTATE(envKey, annotationParam) \
 envVarIsTrue(envKey) || std::find(options.begin(), options.end(), annotationParam) != options.end()
@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 	Interpreter interpreter;
 	try {
 		if (inputFile.size() == 0 || inputFile == "-") {
-			LOG(INFO) << "Reading SCXML from STDIN";
+			LOGD(USCXML_INFO) << "Reading SCXML from STDIN";
 			std::stringstream ss;
 			std::string line;
 			while (std::getline(std::cin, line)) {
@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
 	}
 
 	if (!interpreter) {
-		LOG(ERROR) << "Cannot create interpreter from " << inputFile;
+		LOGD(USCXML_ERROR) << "Cannot create interpreter from " << inputFile;
 		exit(EXIT_FAILURE);
 
 	}

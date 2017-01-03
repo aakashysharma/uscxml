@@ -44,7 +44,7 @@
 #cmakedefine USCXML_VERSION_PATCH "@USCXML_VERSION_PATCH@"
 #cmakedefine USCXML_VERSION "@USCXML_VERSION@"
 
-#cmakedefine XERCESC_NS @XERCESC_NS@
+// #cmakedefine XERCESC_NS @XERCESC_NS@
 
 /** build type */
 #cmakedefine CMAKE_BUILD_TYPE "@CMAKE_BUILD_TYPE@"
@@ -68,6 +68,7 @@
 #cmakedefine WITH_DM_ECMA_V8
 #cmakedefine WITH_DM_ECMA_JSC
 #cmakedefine WITH_DM_LUA
+#cmakedefine WITH_DM_PYTHON
 #cmakedefine WITH_DM_C89
 #cmakedefine WITH_DM_PROMELA
 

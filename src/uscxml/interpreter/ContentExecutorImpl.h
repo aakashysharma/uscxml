@@ -22,14 +22,21 @@
 
 
 #include "uscxml/Common.h"
-#include "uscxml/util/DOM.h"
 #include "uscxml/messages/Event.h"
 #include "uscxml/interpreter/InterpreterMonitor.h"
+#include "uscxml/interpreter/Logging.h"
 
-#include <xercesc/dom/DOM.hpp>
 #include <string>
+#include <set>
+
+namespace XERCESC_NS {
+class DOMDocument;
+class DOMNode;
+}
 
 namespace uscxml {
+
+class X;
 
 /**
  * @ingroup execcontent
@@ -67,6 +74,7 @@ public:
 	/** Monitoring */
 	virtual std::set<InterpreterMonitor*> getMonitors() = 0;
 	virtual Interpreter getInterpreter() = 0;
+	virtual Logger getLogger() = 0;
 
 };
 
@@ -77,6 +85,8 @@ public:
 class USCXML_API ContentExecutorImpl {
 public:
 	ContentExecutorImpl(ContentExecutorCallbacks* callbacks) : _callbacks(callbacks) {}
+
+	virtual std::shared_ptr<ContentExecutorImpl> create(ContentExecutorCallbacks* callbacks) = 0;
 
 	virtual void process(XERCESC_NS::DOMElement* block, const X& xmlPrefix) = 0;
 

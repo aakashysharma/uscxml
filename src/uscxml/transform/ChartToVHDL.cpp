@@ -24,7 +24,7 @@
 
 #include <math.h>
 #include <boost/algorithm/string.hpp>
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 
 #include <iostream>
 #include <algorithm>
@@ -90,7 +90,7 @@ void ChartToVHDL::findEvents() {
 	// Calculate needed bit size for the event fifo
 	// --> |log2(n)| +1 with n is number of events
 	// we do not add +1 because the std_logic_vector startes with 0
-    _eventBitSize = ceil(std::abs(log2(_eventNames.size())));
+	_eventBitSize = ceil(std::abs(log2(_eventNames.size())));
 
 	_execContent = DOMUtils::inDocumentOrder({
 		XML_PREFIX(_scxml).str() + "raise",
@@ -118,8 +118,9 @@ void ChartToVHDL::writeTo(std::ostream &stream) {
 	writeFiFo(stream);
 	writeEventController(stream);
 	writeMicroStepper(stream);
+	writeConditionSolver(stream);
 	writeTestbench(stream);
-	writeTopLevel(stream);
+	//writeTopLevel(stream);
 }
 
 
@@ -147,6 +148,7 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 	stream << std::endl;
 
 	// modules
+	//COMPONENT MS
 	stream << "  -- Module declaration" << std::endl;
 	stream << "  component micro_stepper is" << std::endl;
 	stream << "    port (" << std::endl;
@@ -156,6 +158,15 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 	stream << "    en   :in    std_logic;" << std::endl;
 	stream << "    next_event_i    :in  std_logic_vector( " << _eventBitSize << " downto 0);" << std::endl;
 	stream << "    next_event_we_i :in  std_logic;" << std::endl;
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) { // create enable line if transition has conditions
+			stream << "    transition_condition_fulfilled_" << ATTR(transition, "postFixOrder") <<
+			       "_i : std_logic;"
+			       << std::endl;
+		}
+	}
+
 	stream << "    --outputs" << std::endl;
 	stream << "    error_o     :out std_logic;" << std::endl;
 
@@ -183,6 +194,7 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 	stream << "  end component;" << std::endl;
 	stream << std::endl;
 
+	// COMPONENT EC
 	stream << "  component event_controller is" << std::endl;
 	stream << "  port(" << std::endl;
 	stream << "    --inputs" << std::endl;
@@ -217,12 +229,40 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 	//        stream << "    done_o :out std_logic" << std::endl;
 	stream << ");" << std::endl;
 	stream << "end component; " << std::endl;
+	stream << std::endl;
+
+	//COMPONENT CS
+	stream << "component condition_solver is" << std::endl;
+	stream << "port(" << std::endl;
+	stream << "    --inputs" << std::endl;
+	stream << "    clk  :in    std_logic;" << std::endl;
+	stream << "    rst_i  :in    std_logic;" << std::endl;
+
+	for (auto state : _states) {
+		stream << "    state_active_" << ATTR(state, "documentOrder")
+		       << "_i :in std_logic;" << std::endl;
+	}
+
+	stream << "    --outputs" << std::endl;
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) {
+			stream << "    transition_condition_fulfilled_" << ATTR(transition, "postFixOrder")
+			       << "_o :out std_logic;" << std::endl;
+		}
+	}
+
+	stream << "    micro_stepper_en_o :out  std_logic" << std::endl;
+	stream << ");" << std::endl;
+	stream << "end component; " << std::endl;
 
 	// signals
 	stream << "  -- input" << std::endl;
 	stream << "  signal clk   : std_logic := '0';" << std::endl;
 	stream << "  signal reset : std_logic;" << std::endl;
 	stream << "  signal dut_enable : std_logic;" << std::endl;
+	stream << "  signal ec_enable_out : std_logic;" << std::endl;
+	stream << "  signal cs_enable_out : std_logic;" << std::endl;
 	stream << "  signal next_event_we_i : std_logic;" << std::endl;
 	stream << "  signal next_event_i : std_logic_vector( " << _eventBitSize << " downto 0);" << std::endl;
 	stream << std::endl;
@@ -254,10 +294,21 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 		}
 	}
 
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) { // create enable line if transition has conditions
+			stream << "  signal transition_condition_fulfilled_" << ATTR(transition, "postFixOrder") <<
+			       "_sig : std_logic;"
+			       << std::endl;
+		}
+	}
+	stream << std::endl;
+
 	// wiring
 	stream << "begin" << std::endl;
 	stream << "  clk   <= not clk  after 20 ns;  -- 25 MHz clock frequency" << std::endl;
 	stream << "  reset <= '1', '0' after 100 ns; -- generates reset signal: --__" << std::endl;
+	stream << "  dut_enable <= ec_enable_out and cs_enable_out; -- enable signal for microstepper" <<
+	       std::endl;
 	stream << std::endl;
 
 	stream << "  -- Module instantiation" << std::endl;
@@ -295,6 +346,14 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 			stream << "      transition_set_" << ATTR(transition, "postFixOrder")
 			       << "_o => transition_set_" << ATTR(transition, "postFixOrder")
 			       << "_sig," << std::endl;
+		}
+	}
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) { // create enable line if transition has conditions
+			stream << "      transition_condition_fulfilled_" << ATTR(transition, "postFixOrder") <<
+			       "_i => transition_condition_fulfilled_" << ATTR(transition, "postFixOrder") <<
+			       "_sig," << std::endl;
 		}
 	}
 
@@ -337,8 +396,34 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 		}
 	}
 
-	stream << "      micro_stepper_en_o  => dut_enable" << std::endl;
+	stream << "      micro_stepper_en_o  => ec_enable_out" << std::endl;
 	//        stream << "      done_o  => open" << std::endl;
+	stream << "      );" << std::endl;
+	stream << std::endl;
+
+	stream << "  cs : condition_solver" << std::endl;
+	stream << "    port map(" << std::endl;
+	stream << "      --inputs" << std::endl;
+	stream << "      clk  => clk," << std::endl;
+	stream << "      rst_i  => reset," << std::endl;
+
+	for (auto state : _states) {
+		stream << "      state_active_" << ATTR(state, "documentOrder")
+		       << "_i => state_active_" << ATTR(state, "documentOrder")
+		       << "_sig," << std::endl;
+	}
+
+	stream << "      --outputs" << std::endl;
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) {
+			stream << "      transition_condition_fulfilled_" << ATTR(transition, "postFixOrder")
+			       << "_o => transition_condition_fulfilled_" << ATTR(transition, "postFixOrder") <<
+			       "_sig," << std::endl;
+		}
+	}
+
+	stream << "      micro_stepper_en_o => cs_enable_out" << std::endl;
 	stream << "      );" << std::endl;
 	stream << std::endl;
 
@@ -390,7 +475,6 @@ void ChartToVHDL::writeTestbench(std::ostream &stream) {
 }
 
 void ChartToVHDL::writeTopLevel(std::ostream &stream) {
-
 	stream << "-- TOP LEVEL entity for easy synthesis" << std::endl;
 	writeIncludes(stream);
 	stream << std::endl;
@@ -787,7 +871,7 @@ void ChartToVHDL::writeEventController(std::ostream &stream) {
 						break;
 					}
 				}
-				stream << "      event_bus <= \"" << toBinStr(jj, _eventBitSize+1) << "\";" << std::endl;
+				stream << "      event_bus <= \"" << toBinStr(jj, _eventBitSize + 1) << "\";" << std::endl;
 				stream << "      done_" << toStr(i) << "_sig <= '1';" << std::endl;
 				stream << "      event_we <= '1';" << std::endl;
 				seperator = "    els";
@@ -852,6 +936,106 @@ void ChartToVHDL::writeEventController(std::ostream &stream) {
 	       std::endl;
 }
 
+
+void ChartToVHDL::writeConditionSolver(std::ostream &stream) {
+	// TODO implement
+	// --> solves conditions given by ast
+	// --> Level 1 support In(), >, <, =
+	// --> Level 2 support +, -
+	// --> Level 3 support *, /, mod <-- (just integer operations)
+
+	// Add controler specific stuff here
+	// create hardware top level
+	stream << "-- Condition Solver Logic" << std::endl;
+	writeIncludes(stream);
+	stream << "entity condition_solver is" << std::endl;
+	stream << "port(" << std::endl;
+	stream << "    --inputs" << std::endl;
+	stream << "    clk  :in    std_logic;" << std::endl;
+	stream << "    rst_i  :in    std_logic;" << std::endl;
+
+	for (auto state : _states) {
+		stream << "    state_active_" << ATTR(state, "documentOrder")
+		       << "_i :in std_logic;" << std::endl;
+	}
+
+	stream << "    --outputs" << std::endl;
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) {
+			stream << "    transition_condition_fulfilled_" << ATTR(transition, "postFixOrder")
+			       << "_o :out std_logic;" << std::endl;
+		}
+	}
+
+	stream << "    micro_stepper_en_o :out  std_logic" << std::endl;
+	stream << ");" << std::endl;
+	stream << "end condition_solver; " << std::endl;
+
+	stream << std::endl;
+	stream << "architecture behavioral of condition_solver is " << std::endl;
+	stream << std::endl;
+
+
+	// Add signals and components
+	stream << "signal rst : std_logic;" << std::endl;
+	stream << "signal micro_stepper_en : std_logic;" << std::endl;
+
+	for (int i = 0; i < _execContent.size(); i++) {
+		stream << "signal done_" << toStr(i) << "_sig : std_logic;" << std::endl;
+		stream << "signal start_" << toStr(i) << "_sig : std_logic;" << std::endl;
+	}
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) {
+			stream << "signal transition_condition_fulfilled_" << ATTR(transition, "postFixOrder")
+			       << "_sig : std_logic;" << std::endl;
+		}
+	}
+	stream << std::endl;
+
+	stream << "begin" << std::endl;
+	stream << std::endl;
+
+	// system signal mapping
+	stream << "rst <= rst_i;" << std::endl;
+	stream << "micro_stepper_en_o <= micro_stepper_en;" << std::endl;
+	stream << std::endl;
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) {
+			stream << "transition_condition_fulfilled_" << ATTR(transition, "postFixOrder")
+			       << "_o <= transition_condition_fulfilled_" << ATTR(transition, "postFixOrder")
+			       << "_sig;" << std::endl;
+		}
+	}
+
+	// stall management
+	stream << "-- stalling microstepper" << std::endl;
+	stream << "micro_stepper_en <= '1';" << std::endl;
+	stream << std::endl;
+
+	// solve conditions
+	stream << "-- solve conditions" << std::endl;
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) {
+			stream << "-- cond:"<< ATTR(transition, "cond") << std::endl;
+			// TODO parse code here and generate hardware from AST
+			stream << "transition_condition_fulfilled_" << ATTR(transition, "postFixOrder")
+			       << "_sig <= '0';" << std::endl;
+		}
+	}
+
+
+	stream << "end behavioral; " <<
+	       std::endl;
+	stream << "-- END Condition Solver Logic" <<
+	       std::endl;
+	stream <<
+	       std::endl;
+}
+
+
 std::string ChartToVHDL::getLineForExecContent(const DOMNode *elem) {
 	const DOMNode *ecBlock = elem;
 	while (ecBlock) {
@@ -888,6 +1072,15 @@ void ChartToVHDL::writeMicroStepper(std::ostream &stream) {
 	stream << "    en   :in    std_logic;" << std::endl;
 	stream << "    next_event_i    :in  std_logic_vector( " << _eventBitSize << " downto 0);" << std::endl;
 	stream << "    next_event_we_i :in  std_logic;" << std::endl;
+
+	for (auto transition : _transitions) {
+		if (HAS_ATTR(transition, "cond")) { // create enable line if transition has conditions
+			stream << "signal transition_condition_fulfilled_" << ATTR(transition, "postFixOrder") <<
+			       "_i : std_logic;"
+			       << std::endl;
+		}
+	}
+
 	stream << "    --outputs" << std::endl;
 	stream << "    error_o     :out std_logic;" << std::endl;
 
@@ -1102,7 +1295,7 @@ void ChartToVHDL::writeSignalsAndComponents(std::ostream &stream) {
 	stream << "signal int_event_input : std_logic_vector( " << _eventBitSize << " downto 0);" << std::endl;
 	stream << "signal int_event_output : std_logic_vector( " << _eventBitSize << " downto 0);" << std::endl;
 	stream << "signal next_event_re : std_logic;" << std::endl;
-	stream << "signal next_event_dequeued : std_logic;" << std::endl;
+	stream << "signal event_dequeued : std_logic;" << std::endl;
 	stream << "signal next_event : std_logic_vector( " << _eventBitSize << " downto 0);" << std::endl;
 	stream << "signal event_consumed : std_logic;" << std::endl;
 	stream << std::endl;
@@ -1183,8 +1376,9 @@ void ChartToVHDL::writeSpontaneousHandler(std::ostream &stream) {
 	stream << "        if spontaneous_en = '1' then" << std::endl;
 	stream << "            spontaneous_en <= optimal_transition_set_combined_sig;" << std::endl;
 	stream << "        else" << std::endl;
-	//if new event is dequeued then 1 else stay 0
-	stream << "            spontaneous_en <= next_event_dequeued;" << std::endl;
+	//if new event is dequeued then 1 else stay 0 (but enable it when queue is empty -> spontaneous based state chart)
+	stream << "            spontaneous_en <= event_dequeued or (not event_dequeued and int_event_empty);" <<
+	       std::endl;
 	stream << "        end if;" << std::endl;
 	stream << "    end if;" << std::endl;
 	stream << "end process;" << std::endl;
@@ -1204,7 +1398,7 @@ void ChartToVHDL::writeInternalEventHandler(std::ostream &stream) {
 		stream << "        event_" << escapeMacro((*eventIter)->value) << "_sig <= '0';" << std::endl;
 	}
 
-	stream << "        next_event_dequeued <= '0';" << std::endl;
+	stream << "        event_dequeued <= '0';" << std::endl;
 	stream << "        event_consumed <= '0';" << std::endl;
 
 	stream << "    elsif falling_edge(clk) and stall = '0' then" << std::endl;
@@ -1219,7 +1413,7 @@ void ChartToVHDL::writeInternalEventHandler(std::ostream &stream) {
 	}
 
 	VBranch *tree = (VASSIGN,
-	                 VLINE("event_consumed"),
+	                 VLINE("       event_consumed"),
 	                 eventConsumed);
 	tree->print(stream);
 	stream << ";" << std::endl;
@@ -1231,7 +1425,7 @@ void ChartToVHDL::writeInternalEventHandler(std::ostream &stream) {
 	for (std::list<TrieNode *>::iterator eventIter = _eventNames.begin();
 	        eventIter != _eventNames.end(); eventIter++, jj++) {
 
-		stream << "      when \"" << toBinStr(jj, _eventBitSize+1) << "\" =>" << std::endl;
+		stream << "      when \"" << toBinStr(jj, _eventBitSize + 1) << "\" =>" << std::endl;
 		for (std::list<TrieNode *>::iterator eventIter2 = _eventNames.begin();
 		        eventIter2 != _eventNames.end(); eventIter2++) {
 			stream << "        event_" << escapeMacro((*eventIter2)->value);
@@ -1241,14 +1435,14 @@ void ChartToVHDL::writeInternalEventHandler(std::ostream &stream) {
 				stream << "_sig <= '0';" << std::endl;
 			}
 		}
-		stream << "        next_event_dequeued <= '1';" << std::endl;
+		stream << "        event_dequeued <= '1';" << std::endl;
 	}
 	stream << "      when others =>" << std::endl;
 	for (std::list<TrieNode *>::iterator eventIter = _eventNames.begin();
 	        eventIter != _eventNames.end(); eventIter++) {
 		stream << "        event_" << escapeMacro((*eventIter)->value) << "_sig <= '0';" << std::endl;
 	}
-	stream << "        next_event_dequeued <= '0';" << std::endl;
+	stream << "        event_dequeued <= '0';" << std::endl;
 	stream << "      end case;" << std::endl;
 	stream << "      elsif int_event_empty = '1' and event_consumed = '1' then" << std::endl;
 
@@ -1256,7 +1450,7 @@ void ChartToVHDL::writeInternalEventHandler(std::ostream &stream) {
 	        eventIter != _eventNames.end(); eventIter++) {
 		stream << "        event_" << escapeMacro((*eventIter)->value) << "_sig <= '0';" << std::endl;
 	}
-	stream << "        next_event_dequeued <= '0';" << std::endl;
+	stream << "        event_dequeued <= '0';" << std::endl;
 	stream << "    end if;" << std::endl;
 	stream << "    end if;" << std::endl;
 	stream << "end process;" << std::endl;
@@ -1336,6 +1530,13 @@ void ChartToVHDL::writeOptimalTransitionSetSelection(std::ostream &stream) {
 		                  (HAS_ATTR(transition, "event")
 		                   ? (VNOT, VLINE("spontaneous_active"))
 		                   : (VNOP, VLINE("spontaneous_en"))),
+
+		                  HAS_ATTR(transition, "cond")
+		                  ? (VNOP,
+		                     VLINE("transition_condition_fulfilled_" + ATTR(transition, "postFixOrder") +
+		                           "_i"))
+		                  : (VNOP, VLINE("'1'")),
+
 		                  VLINE("state_active_" + ATTR(transition, "source") + "_sig"),
 		                  nameMatchers,
 		                  (VNOT, conflicters)));
@@ -1363,6 +1564,7 @@ void ChartToVHDL::writeOptimalTransitionSetSelection(std::ostream &stream) {
 	tree2->print(stream);
 	stream << ";" << std::endl;
 }
+
 
 void ChartToVHDL::writeExitSet(std::ostream &stream) {
 	stream << "-- exit set selection" << std::endl;
@@ -1569,8 +1771,17 @@ void ChartToVHDL::writeSystemSignalMapping(std::ostream &stream) {
 	stream << ";" << std::endl;
 
 	// tmp mapping for events
-	stream << "stall <= not en or completed_sig or ( int_event_empty and not spontaneous_en ) ; " << std::endl;
-	stream << std::endl;
+//	stream << "stall_handler : process (clk, rst) " << std::endl;
+//	stream << "begin" << std::endl;
+//	stream << "    if rst = '1' then" << std::endl;
+//	stream << "        stall <= '0';" << std::endl;
+//	stream << "    elsif rising_edge(clk) then" << std::endl;
+	// empty queue as stall source can arise some issues with state charts just based on spontaneous transitions
+	stream << "        stall <= not en or completed_sig ; --or ( int_event_empty and not spontaneous_en); " <<
+	       std::endl;
+//	stream << "    end if;" << std::endl;
+//	stream << "end process;" << std::endl;
+//	stream << std::endl;
 
 	// interface signals
 	stream << "-- interface signals" << std::endl;

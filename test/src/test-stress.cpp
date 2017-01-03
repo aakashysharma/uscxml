@@ -3,7 +3,7 @@
 //#include "uscxml/Factory.h"
 #include "uscxml/server/HTTPServer.h"
 
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 
 #include "uscxml/plugins/invoker/dirmon/DirMonInvoker.h"
 #include <boost/algorithm/string.hpp>
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
 		Interpreter interpreter = Interpreter::fromURL(std::string(argv[optind]) + PATH_SEPERATOR + entryIter->first);
 //        Interpreter interpreter = Interpreter::fromURL("/Users/sradomski/Documents/TK/Code/uscxml/test/w3c/ecma/test422.scxml");
-		LOG(INFO) << "Processing " << interpreter.getImpl()->getBaseURL();
+		LOGD(USCXML_INFO) << "Processing " << interpreter.getImpl()->getBaseURL();
 		if (interpreter) {
 
 			interpreter.addMonitor(&vm);

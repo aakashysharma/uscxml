@@ -29,7 +29,7 @@
 
 #include "PromelaParser.h"
 #include "parser/promela.tab.hpp"
-#include <easylogging++.h>
+#include "uscxml/interpreter/Logging.h"
 
 #ifdef BUILD_AS_PLUGINS
 #include <Pluma/Connector.hpp>
@@ -193,7 +193,7 @@ void PromelaDataModel::setEvent(const Event& event) {
 		try {
 			PromelaParser parser(expr);
 		} catch (Event e) {
-			LOG(ERROR) << e << std::endl;
+			LOG(_callbacks->getLogger(), USCXML_ERROR) << e << std::endl;
 			return false;
 		}
 		return true;
