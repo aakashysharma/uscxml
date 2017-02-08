@@ -157,6 +157,21 @@ public abstract class StateChart {
 
 	public InterpreterState step(long blockMs) throws org.uscxml.InterpreterException {
 		/** Here you would implement microstep(T) as in the book chapter */
+		//check for  spontaneous transition, if yes set event to 
+//		state = InterpreterState.USCXML_UNDEF;
+		
+		// if no more spontaneous event, deque from internal queue
+		if(!internalQueue.isEmpty()){
+			this.dequeueInternal();
+			//TODO process
+		}else if(!externalQueue.isEmpty()){
+			this.dequeueExternal();
+			//TODO process external event
+		}else{
+			//TODO Block and wait till external event
+			
+		}
+		
 		
 		
 		/** Just to silence the compiler warning */
